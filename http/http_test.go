@@ -19,5 +19,4 @@ func TestHTTP(t *testing.T) {
 	b, err := client.DownloadIf(url, time.Now())
 	assert.Nil(t, b)
 	assert.NoError(t, err)
-	assert.Fail(t, "xxx")
 }
