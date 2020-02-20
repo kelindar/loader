@@ -44,8 +44,16 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 	case "http", "https":
 		return l.web.DownloadIf(uri, updatedSince)
 	case "s3":
-		return l.s3.DownloadIf(ctx, u.Host, u.Path, updatedSince)
+		return l.s3.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
 	}
 
 	return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
+}
+
+func getBucket(host string) string {
+	return strings.Split(host, ".")[0]
+}
+
+func getPrefix(path string) string {
+	return strings.TrimLeft(path, "/")
 }
