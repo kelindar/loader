@@ -18,13 +18,21 @@ var zeroTime = time.Unix(0, 0)
 
 // Loader represents a client that can load something from a remote source.
 type Loader struct {
-	s3  s3.Client   // The client for AWS S3
-	web http.Client // The client for HTTP
+	s3  *s3.Client   // The client for AWS S3
+	web *http.Client // The client for HTTP
 }
 
 // New creates a new loader instance.
 func New() *Loader {
-	return &Loader{}
+	s3cli, err := s3.New("", 5)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Loader{
+		web: http.New(),
+		s3:  s3cli,
+	}
 }
 
 // Load attempts to load the resource from the specified URL.
