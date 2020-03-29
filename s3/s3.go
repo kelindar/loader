@@ -52,6 +52,15 @@ func New(region string, retries int) (*Client, error) {
 	return NewFromSession(sess), nil
 }
 
+// NewWithConfig creates new S3 Client with passed config
+func NewWithConfig(config *aws.Config) (*Client, error) {
+	sess, err := session.NewSession(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromSession(sess), nil
+}
+
 // NewFromSession a new S3 Client with the supplied AWS session
 func NewFromSession(sess *session.Session) *Client {
 	concurrency := runtime.NumCPU() * 4

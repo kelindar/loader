@@ -23,15 +23,35 @@ type Loader struct {
 }
 
 // New creates a new loader instance.
-func New() *Loader {
+func New(options ...func(*Loader)) *Loader {
 	s3cli, err := s3.New("", 5)
 	if err != nil {
 		panic(err)
 	}
 
-	return &Loader{
+	loader := &Loader{
 		web: http.New(),
 		s3:  s3cli,
+	}
+
+	for _, option := range options {
+		option(loader)
+	}
+
+	return loader
+}
+
+// WithS3Client sets loader with S3Client
+func WithS3Client(s3Client *s3.Client) func(*Loader) {
+	return func(l *Loader) {
+		l.s3 = s3Client
+	}
+}
+
+// WithHTTPClient sets loader with HttpClient
+func WithHTTPClient(httpClient *http.Client) func(*Loader) {
+	return func(l *Loader) {
+		l.web = httpClient
 	}
 }
 
