@@ -37,6 +37,7 @@ func New(options ...func(*Loader)) *Loader {
 	}
 
 	loader := &Loader{
+		fs:  file.New(),
 		web: http.New(),
 		s3:  s3cli,
 	}
