@@ -8,18 +8,25 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/kelindar/loader/file"
 	"github.com/kelindar/loader/http"
 	"github.com/kelindar/loader/s3"
 )
 
-var zeroTime = time.Unix(0, 0)
+var (
+	zeroTime = time.Unix(0, 0)
+	timeout  = 30 * time.Second
+)
 
 // Loader represents a client that can load something from a remote source.
 type Loader struct {
-	s3  *s3.Client   // The client for AWS S3
-	web *http.Client // The client for HTTP
+	watchers sync.Map     // The list of watchers
+	s3       *s3.Client   // The client for AWS S3
+	web      *http.Client // The client for HTTP
+	fs       *file.Client // The client for the filesystem
 }
 
 // New creates a new loader instance.
@@ -69,6 +76,8 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 	}
 
 	switch strings.ToLower(u.Scheme) {
+	case "file":
+		return l.fs.DownloadIf(uri, updatedSince)
 	case "http", "https":
 		return l.web.DownloadIf(uri, updatedSince)
 	case "s3":
@@ -76,6 +85,27 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 	}
 
 	return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
+}
+
+// Watch starts watching a specific URI
+func (l *Loader) Watch(ctx context.Context, uri string, interval time.Duration) <-chan Update {
+	w, loaded := l.watchers.LoadOrStore(uri, newWatcher(l, uri, interval))
+	watch := w.(*watcher)
+
+	// If it's a new watch, start it (otherwise we return an existing watch channel)
+	if !loaded {
+		watch.Start(ctx)
+	}
+	return watch.updates
+}
+
+// Unwatch stops watching a specific URI
+func (l *Loader) Unwatch(uri string) bool {
+	if w, ok := l.watchers.Load(uri); ok {
+		w.(*watcher).Stop()
+		return true
+	}
+	return false
 }
 
 func getBucket(host string) string {
