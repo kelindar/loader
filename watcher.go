@@ -61,6 +61,9 @@ func (w *watcher) check(ctx context.Context) {
 
 // Start starts watching
 func (w *watcher) Start(ctx context.Context) {
+	w.check(ctx) // Peform the first check immediately
+
+	// The rest should be locked
 	w.Lock()
 	defer w.Unlock()
 
