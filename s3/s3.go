@@ -6,6 +6,7 @@ package s3
 import (
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -34,13 +35,17 @@ type Client struct {
 // New a new S3 Client.
 func New(region string, retries int) (*Client, error) {
 	conf := aws.NewConfig().WithMaxRetries(retries)
-	if region != "" {
-		conf = conf.WithRegion(region)
-	}
 
-	// Testing purpose
-	if strings.HasPrefix(region, "http") {
-		conf = conf.WithEndpoint(region).WithS3ForcePathStyle(true)
+	// Set the region or endpoint (for testing)
+	switch {
+	case strings.HasPrefix(region, "http"):
+		conf.WithEndpoint(region).WithS3ForcePathStyle(true)
+	case region != "":
+		conf.WithRegion(region)
+	case os.Getenv("AWS_DEFAULT_REGION") != "":
+		conf.WithRegion(os.Getenv("AWS_DEFAULT_REGION"))
+	default:
+		conf.WithRegion("us-east-1")
 	}
 
 	// Create the session
