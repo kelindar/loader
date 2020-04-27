@@ -33,6 +33,7 @@ func New() (*Client, error) {
 		opts = append(opts, option.WithCredentials(creds))
 	} else {
 		opts = append(opts, option.WithScopes(scope))
+		opts = append(opts, option.WithoutAuthentication())
 	}
 
 	if os.Getenv("STORAGE_EMULATOR_ENDPOINT") != "" {
