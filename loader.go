@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kelindar/loader/file"
+	"github.com/kelindar/loader/gcs"
 	"github.com/kelindar/loader/http"
 	"github.com/kelindar/loader/s3"
 )
@@ -27,11 +28,17 @@ type Loader struct {
 	s3       *s3.Client   // The client for AWS S3
 	web      *http.Client // The client for HTTP
 	fs       *file.Client // The client for the filesystem
+	gcs      *gcs.Client  // The client for Google Cloud Storage
 }
 
 // New creates a new loader instance.
 func New(options ...func(*Loader)) *Loader {
-	s3cli, err := s3.New("", 5)
+	s3, err := s3.New("", 5)
+	if err != nil {
+		panic(err)
+	}
+
+	gcs, err := gcs.New()
 	if err != nil {
 		panic(err)
 	}
@@ -39,7 +46,8 @@ func New(options ...func(*Loader)) *Loader {
 	loader := &Loader{
 		fs:  file.New(),
 		web: http.New(),
-		s3:  s3cli,
+		s3:  s3,
+		gcs: gcs,
 	}
 
 	for _, option := range options {
@@ -83,6 +91,8 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 		return l.web.DownloadIf(uri, updatedSince)
 	case "s3":
 		return l.s3.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
+	case "gcs", "cs":
+		return l.gcs.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
 	}
 
 	return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
