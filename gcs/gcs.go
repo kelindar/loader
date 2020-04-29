@@ -94,11 +94,10 @@ func (s *Client) getLatestKey(ctx context.Context, bucket, prefix string) (strin
 	var updatedAt time.Time
 	for {
 		o, err := cursor.Next()
-
 		if err == iterator.Done {
-			println("DONE")
 			break
 		}
+
 		if err != nil {
 			return "", time.Time{}, err
 		}
