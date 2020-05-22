@@ -91,7 +91,7 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 		return l.web.DownloadIf(uri, updatedSince)
 	case "s3":
 		return l.s3.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
-	case "gcs", "cs":
+	case "gcs", "gs":
 		return l.gcs.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
 	}
 
