@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/url"
 	"os"
-	"runtime"
 	"time"
 )
 
@@ -60,7 +59,7 @@ func parse(uri string) (*url.URL, error) {
 	}
 
 	// Remove the first slash
-	if runtime.GOOS == "windows" && len(u.Path) > 0 && u.Path[0] == '/' {
+	if len(u.Path) > 0 && u.Path[0] == '/' {
 		u.Path = u.Path[1:]
 	}
 	return u, nil
