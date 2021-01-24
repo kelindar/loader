@@ -7,7 +7,9 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -52,7 +54,13 @@ func New() (*Client, error) {
 
 // DownloadIf downloads a file only if the updatedSince time is older than the resource
 // timestamp itself.
-func (s *Client) DownloadIf(ctx context.Context, bucket, prefix string, updatedSince time.Time) ([]byte, error) {
+func (s *Client) DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error) {
+	bucket, prefix, err := parseURI(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the latest key
 	key, updatedAt, err := s.getLatestKey(ctx, bucket, prefix)
 	if err != nil {
 		return nil, err
@@ -125,4 +133,14 @@ func loadCredentials() (*google.Credentials, error) {
 	}
 
 	return google.FindDefaultCredentials(context.Background(), scope)
+}
+
+// parseURI returns bucket and prefix
+func parseURI(uri string) (string, string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", "", err
+	}
+
+	return strings.Split(u.Host, ".")[0], strings.TrimLeft(u.Path, "/"), nil
 }

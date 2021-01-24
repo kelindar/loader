@@ -24,7 +24,6 @@ func TestS3(t *testing.T) {
 	defer ts.Close()
 
 	// Test data
-	bucket := "bucket"
 	inputVal := []byte("hello world")
 
 	// Create a new S3 layer
@@ -37,10 +36,9 @@ func TestS3(t *testing.T) {
 	s3.PutObject("hello.txt", inputVal)
 
 	// Test DownloadNewer
-	val, err := cli.DownloadIf(context.Background(), bucket, "h", time.Unix(0, 0))
+	val, err := cli.DownloadIf(context.Background(), "s3://bucket/h", time.Unix(0, 0))
 	assert.NoError(t, err)
 	assert.Equal(t, inputVal, val)
-
 }
 
 // fakeS3 represents a fake s3 server

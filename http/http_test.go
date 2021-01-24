@@ -4,6 +4,7 @@
 package http
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ func TestHTTP(t *testing.T) {
 	client := New()
 	assert.NotNil(t, client)
 
-	b, err := client.DownloadIf(url, time.Now())
+	b, err := client.DownloadIf(context.Background(), url, time.Now())
 	assert.Nil(t, b)
 	assert.NoError(t, err)
 }

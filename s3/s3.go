@@ -6,6 +6,7 @@ package s3
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -39,13 +41,17 @@ func New(region string, retries int) (*Client, error) {
 	// Set the region or endpoint (for testing)
 	switch {
 	case strings.HasPrefix(region, "http"):
-		conf.WithEndpoint(region).WithS3ForcePathStyle(true)
+		conf = conf.WithRegion("custom").
+			WithEndpoint(region).
+			WithS3ForcePathStyle(true).
+			WithCredentialsChainVerboseErrors(true).
+			WithCredentials(credentials.NewStaticCredentials("XXX", "YYY", ""))
 	case region != "":
-		conf.WithRegion(region)
+		conf = conf.WithRegion(region)
 	case os.Getenv("AWS_DEFAULT_REGION") != "":
-		conf.WithRegion(os.Getenv("AWS_DEFAULT_REGION"))
+		conf = conf.WithRegion(os.Getenv("AWS_DEFAULT_REGION"))
 	default:
-		conf.WithRegion("us-east-1")
+		conf = conf.WithRegion("us-east-1")
 	}
 
 	// Create the session
@@ -77,7 +83,13 @@ func NewFromSession(sess *session.Session) *Client {
 
 // DownloadIf downloads a file only if the updatedSince time is older than the resource
 // timestamp itself.
-func (s *Client) DownloadIf(ctx context.Context, bucket, prefix string, updatedSince time.Time) ([]byte, error) {
+func (s *Client) DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error) {
+	bucket, prefix, err := parseURI(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the latest key
 	key, updatedAt, err := s.getLatestKey(ctx, bucket, prefix)
 	if err != nil {
 		return nil, err
@@ -150,4 +162,14 @@ func convertError(err error) error {
 
 func isModified(updatedAt, updatedSince time.Time) bool {
 	return updatedAt.UTC().Unix() > updatedSince.UTC().Unix()
+}
+
+// parseURI returns bucket and prefix
+func parseURI(uri string) (string, string, error) {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", "", err
+	}
+
+	return strings.Split(u.Host, ".")[0], strings.TrimLeft(u.Path, "/"), nil
 }

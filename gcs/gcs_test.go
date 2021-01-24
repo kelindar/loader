@@ -48,7 +48,7 @@ func TestGCS(t *testing.T) {
 
 	// Test DownloadNewer
 	{
-		val, err := cli.DownloadIf(context.Background(), bucket, "h", time.Unix(0, 0))
+		val, err := cli.DownloadIf(context.Background(), "gs://bucket/h", time.Unix(0, 0))
 		assert.NoError(t, err)
 		assert.Equal(t, inputVal, val)
 	}

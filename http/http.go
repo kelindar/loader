@@ -4,6 +4,7 @@
 package http
 
 import (
+	"context"
 	stdhttp "net/http"
 	"time"
 
@@ -23,7 +24,7 @@ func New() *Client {
 
 // DownloadIf downloads a file only if the updatedSince time is older than the resource
 // timestamp itself.
-func (c *Client) DownloadIf(uri string, updatedSince time.Time) ([]byte, error) {
+func (c *Client) DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error) {
 	resp, err := req.Head(uri, req.Header{
 		"If-Modified-Since": updatedSince.Format(timeFormat),
 	})

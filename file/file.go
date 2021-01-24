@@ -4,6 +4,7 @@
 package file
 
 import (
+	"context"
 	"io/ioutil"
 	"net/url"
 	"os"
@@ -21,7 +22,7 @@ func New() *Client {
 
 // DownloadIf downloads a file only if the updatedSince time is older than the resource
 // timestamp itself.
-func (c *Client) DownloadIf(uri string, updatedSince time.Time) ([]byte, error) {
+func (c *Client) DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error) {
 	u, err := parse(uri)
 	if err != nil {
 		return nil, err

@@ -12,9 +12,7 @@ import (
 	"time"
 
 	"github.com/kelindar/loader/file"
-	"github.com/kelindar/loader/gcs"
 	"github.com/kelindar/loader/http"
-	"github.com/kelindar/loader/s3"
 )
 
 var (
@@ -22,32 +20,26 @@ var (
 	timeout  = 30 * time.Second
 )
 
+// Downloader represents a downloader client (e.g. s3, gcs)
+type Downloader interface {
+	DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error)
+}
+
 // Loader represents a client that can load something from a remote source.
 type Loader struct {
-	watchers sync.Map     // The list of watchers
-	s3       *s3.Client   // The client for AWS S3
-	web      *http.Client // The client for HTTP
-	fs       *file.Client // The client for the filesystem
-	gcs      *gcs.Client  // The client for Google Cloud Storage
+	watchers sync.Map              // The list of watchers
+	clients  map[string]Downloader // The list of dowloaders
 }
 
 // New creates a new loader instance.
 func New(options ...func(*Loader)) *Loader {
-	s3, err := s3.New("", 5)
-	if err != nil {
-		panic(err)
-	}
-
-	gcs, err := gcs.New()
-	if err != nil {
-		panic(err)
-	}
-
+	web := http.New()
 	loader := &Loader{
-		fs:  file.New(),
-		web: http.New(),
-		s3:  s3,
-		gcs: gcs,
+		clients: map[string]Downloader{
+			"file":  file.New(),
+			"http":  web,
+			"https": web,
+		},
 	}
 
 	for _, option := range options {
@@ -55,20 +47,6 @@ func New(options ...func(*Loader)) *Loader {
 	}
 
 	return loader
-}
-
-// WithS3Client sets loader with S3Client
-func WithS3Client(s3Client *s3.Client) func(*Loader) {
-	return func(l *Loader) {
-		l.s3 = s3Client
-	}
-}
-
-// WithHTTPClient sets loader with HttpClient
-func WithHTTPClient(httpClient *http.Client) func(*Loader) {
-	return func(l *Loader) {
-		l.web = httpClient
-	}
 }
 
 // Load attempts to load the resource from the specified URL.
@@ -84,15 +62,10 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 		return nil, err
 	}
 
-	switch strings.ToLower(u.Scheme) {
-	case "file":
-		return l.fs.DownloadIf(uri, updatedSince)
-	case "http", "https":
-		return l.web.DownloadIf(uri, updatedSince)
-	case "s3":
-		return l.s3.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
-	case "gcs", "gs":
-		return l.gcs.DownloadIf(ctx, getBucket(u.Host), getPrefix(u.Path), updatedSince)
+	// Get the client for the scheme and download
+	scheme := strings.ToLower(u.Scheme)
+	if client, ok := l.clients[scheme]; ok {
+		return client.DownloadIf(ctx, uri, updatedSince)
 	}
 
 	return nil, fmt.Errorf("scheme %s is not supported", u.Scheme)
@@ -100,10 +73,12 @@ func (l *Loader) LoadIf(ctx context.Context, uri string, updatedSince time.Time)
 
 // Watch starts watching a specific URI
 func (l *Loader) Watch(ctx context.Context, uri string, interval time.Duration) <-chan Update {
-	w, loaded := l.watchers.LoadOrStore(uri, newWatcher(l, uri, interval))
-	watch := w.(*watcher)
+	w, loaded := l.watchers.LoadOrStore(uri, newWatcher(l, uri, interval, func() {
+		l.Unwatch(uri)
+	}))
 
-	// If it's a new watch, start it (otherwise we return an existing watch channel)
+	// Start the watcher if it's a new one
+	watch := w.(*watcher)
 	if !loaded {
 		watch.Start(ctx)
 	}
@@ -112,17 +87,32 @@ func (l *Loader) Watch(ctx context.Context, uri string, interval time.Duration) 
 
 // Unwatch stops watching a specific URI
 func (l *Loader) Unwatch(uri string) bool {
-	if w, ok := l.watchers.Load(uri); ok {
-		w.(*watcher).Stop()
+	if v, loaded := l.watchers.LoadAndDelete(uri); loaded {
+		v.(*watcher).Close()
 		return true
 	}
+
 	return false
 }
 
-func getBucket(host string) string {
-	return strings.Split(host, ".")[0]
+// -------------------------------------------------------------
+
+// WithDownloader registers a downloader for a specific protocol
+func WithDownloader(scheme string, dl Downloader) func(*Loader) {
+	return func(l *Loader) {
+		l.clients[strings.ToLower(scheme)] = dl
+	}
 }
 
-func getPrefix(path string) string {
-	return strings.TrimLeft(path, "/")
+// WithS3 registers a downloader for the S3 protocol
+func WithS3(dl Downloader) func(*Loader) {
+	return WithDownloader("s3", dl)
+}
+
+// WithGCS registers a downloader for the Google Cloud Storage protocol
+func WithGCS(dl Downloader) func(*Loader) {
+	return func(l *Loader) {
+		l.clients["gs"] = dl
+		l.clients["gcs"] = dl
+	}
 }

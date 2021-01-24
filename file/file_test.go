@@ -4,6 +4,7 @@
 package file
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,13 +20,13 @@ func TestFile(t *testing.T) {
 	assert.NotNil(t, client)
 
 	{
-		b, err := client.DownloadIf(url, time.Unix(0, 0))
+		b, err := client.DownloadIf(context.Background(), url, time.Unix(0, 0))
 		assert.NotNil(t, b)
 		assert.NoError(t, err)
 	}
 
 	{
-		b, err := client.DownloadIf(url, time.Now())
+		b, err := client.DownloadIf(context.Background(), url, time.Now())
 		assert.Nil(t, b)
 		assert.NoError(t, err)
 	}

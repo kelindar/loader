@@ -9,15 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kelindar/loader/file"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadIf(t *testing.T) {
 
 	f, _ := filepath.Abs("loader.go")
-	url := "file:///" + f
+	url := "filetest:///" + f
 
-	loader := New()
+	loader := New(WithDownloader("filetest", file.New()))
 	assert.NotNil(t, loader)
 	ctx := context.Background()
 

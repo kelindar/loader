@@ -26,16 +26,18 @@ type watcher struct {
 	updatedAt time.Time     // The last updated time
 	interval  time.Duration // The interval to watch
 	timer     *time.Ticker  // The ticker to use
+	cancel    func()        // The cancellation callback
 }
 
 // newWatcher creates a new watcher and starts watching a URI
-func newWatcher(loader *Loader, uri string, interval time.Duration) *watcher {
+func newWatcher(loader *Loader, uri string, interval time.Duration, cancel func()) *watcher {
 	return &watcher{
 		loader:    loader,
 		uri:       uri,
 		updates:   make(chan Update, 1),
 		updatedAt: zeroTime,
 		interval:  interval,
+		cancel:    cancel,
 	}
 }
 
@@ -45,56 +47,65 @@ func (w *watcher) check(ctx context.Context) {
 	defer cancel()
 	defer handlePanic()
 
-	// Try to load
-	now := time.Now()
-	b, err := w.loader.LoadIf(ctx, w.uri, w.updatedAt)
-	if b == nil && err == nil {
-		return // No updates, skip
-	}
+	select {
+	// If the context is closed, close the watcher instead
+	case <-ctx.Done():
+		w.Close()
 
-	// Push an update and update the time
-	w.updates <- Update{b, err}
-	w.Lock()
-	w.updatedAt = now
-	w.Unlock()
+	// Try to load if updated date is different
+	default:
+		now := time.Now()
+		b, err := w.loader.LoadIf(ctx, w.uri, w.updatedAt)
+		if b == nil && err == nil {
+			return // No updates, skip
+		}
+
+		// Update the time and push the update out
+		w.Lock()
+		w.updatedAt = now
+		w.Unlock()
+		w.updates <- Update{b, err}
+	}
 }
 
 // Start starts watching
 func (w *watcher) Start(ctx context.Context) {
-	w.check(ctx) // Peform the first check immediately
+
+	// Peform the first check immediately
+	w.check(ctx)
 
 	// The rest should be locked
 	w.Lock()
 	defer w.Unlock()
 
-	// Stop previous timer
-	if w.timer != nil {
-		w.timer.Stop()
-	}
-
 	// Start a new timer and a goroutine to monitor
-	w.timer = time.NewTicker(w.interval)
+	timer := time.NewTicker(w.interval)
+	w.timer = timer // Copy
 	go func() {
-		for range w.timer.C {
+		for range timer.C {
 			w.check(ctx)
 		}
 	}()
 }
 
-// Stop stops the watcher
-func (w *watcher) Stop() {
+// Close stops the watcher
+func (w *watcher) Close() error {
 	w.Lock()
 	defer w.Unlock()
 
-	// Stop a timer if there is one
+	// Avoid double-stopping
 	if w.timer != nil {
-		w.timer.Stop()
+		w.timer.Stop()   // Stop the timer
+		w.timer = nil    // Remove the timer
+		close(w.updates) // Close the channel
+		w.cancel()       // Call the cancellation callback
 	}
+	return nil
 }
 
 // handlePanic handles the panic and logs it out.
 func handlePanic() {
 	if r := recover(); r != nil {
-		log.Printf("panic recovered: %ss \n %s", r, debug.Stack())
+		log.Printf("panic recovered: %s \n %s", r, debug.Stack())
 	}
 }
