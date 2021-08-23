@@ -95,6 +95,15 @@ func (l *Loader) Unwatch(uri string) bool {
 	return false
 }
 
+// RangeWatchers iterates over the currently active watchers by URL. If the
+// callback returns false, the iteration is halted.
+func (l *Loader) RangeWatchers(fn func(uri string) bool) {
+	l.watchers.Range(func(key, value interface{}) bool {
+		uri, _ := key.(string)
+		return fn(uri)
+	})
+}
+
 // -------------------------------------------------------------
 
 // WithDownloader registers a downloader for a specific protocol
