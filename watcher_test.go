@@ -5,7 +5,10 @@ package loader
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,57 +32,58 @@ func TestWatch(t *testing.T) {
 	assert.True(t, loader.Unwatch(url))
 }
 
-func TestWatch_Cancel(t *testing.T) {
-	f, _ := filepath.Abs("loader.go")
-	url := "file:///" + f
-	loader := New()
-	assert.NotNil(t, loader)
-
-	var count int
-	for i := 0; i < 10; i++ {
-
-		// Create a context and cancel after a while
+func TestUnwatchByCancel(t *testing.T) {
+	testCancelByFunc(t, func(wg *sync.WaitGroup, loader *Loader, url string) context.Context {
 		ctx, cancel := context.WithCancel(context.Background())
-		time.AfterFunc(10*time.Millisecond, cancel)
-
-		// This should be unblocked
-		updates := loader.Watch(ctx, url, 1*time.Millisecond)
-		for range updates {
-			count++
-		}
-
-	}
-	assert.Equal(t, 10, count)
-}
-
-func TestWatch_Unwatch(t *testing.T) {
-	f, _ := filepath.Abs("loader.go")
-	url := "file:///" + f
-	loader := New()
-	assert.NotNil(t, loader)
-
-	var count int
-	for i := 0; i < 10; i++ {
 		time.AfterFunc(10*time.Millisecond, func() {
-			loader.Unwatch(url)
+			cancel()
+			wg.Done()
 		})
 
-		// This should be unblocked
-		updates := loader.Watch(context.Background(), url, 1*time.Millisecond)
-		for range updates {
-			count++
-		}
+		return ctx
+	})
+}
 
+func TestUnwatchByUrl(t *testing.T) {
+	testCancelByFunc(t, func(wg *sync.WaitGroup, loader *Loader, url string) context.Context {
+		time.AfterFunc(10*time.Millisecond, func() {
+			loader.Unwatch(url)
+			wg.Done()
+		})
+
+		return context.Background()
+	})
+}
+
+func testCancelByFunc(t *testing.T, fn func(wg *sync.WaitGroup, loader *Loader, url string) context.Context) {
+	loader, url := makeTestLoader()
+
+	var count int64
+	var wg sync.WaitGroup
+	wg.Add(10)
+
+	// Create a bunch of watchers and unwatch them
+	for i := 0; i < 10; i++ {
+		handle := fmt.Sprintf("%s-%d", url, i)
+		ctx := fn(&wg, loader, handle)
+
+		go func() {
+			updates := loader.Watch(ctx, handle, 1*time.Millisecond)
+			for range updates {
+				atomic.AddInt64(&count, 1)
+			}
+		}()
 	}
-	assert.Equal(t, 10, count)
+
+	// Wait until everything is finished
+	wg.Wait()
+	time.Sleep(100 * time.Millisecond)
+	assert.GreaterOrEqual(t, int(atomic.LoadInt64(&count)), 10)
+	assert.Equal(t, 0, countWatchers(loader))
 }
 
 func TestWatch_Many(t *testing.T) {
-	f, _ := filepath.Abs("loader.go")
-	url := "file:///" + f
-	loader := New()
-	assert.NotNil(t, loader)
-
+	loader, url := makeTestLoader()
 	time.AfterFunc(100*time.Millisecond, func() {
 		loader.Unwatch(url)
 	})
@@ -94,4 +98,45 @@ func TestWatch_Many(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 1, count)
+}
+
+func TestWatchTwice(t *testing.T) {
+	l, url := makeTestLoader()
+	w := newWatcher(l, url, time.Second, func() {})
+	assert.NotPanics(t, func() {
+		w.Start(context.Background())
+		w.Start(context.Background())
+	})
+}
+
+func TestCheckClosed(t *testing.T) {
+	l, url := makeTestLoader()
+	w := newWatcher(l, url, time.Second, func() {})
+	assert.NotPanics(t, func() {
+		w.check(context.Background())
+		w.changeState(isCreated, isRunning)
+		w.check(context.Background())
+	})
+}
+
+func TestRangeWatchers(t *testing.T) {
+	loader, url := makeTestLoader()
+	loader.Watch(context.Background(), url, 1*time.Millisecond)
+	loader.Watch(context.Background(), url, 1*time.Millisecond)
+
+	// Should be one (overwrite)
+	assert.Equal(t, 1, countWatchers(loader))
+}
+
+func countWatchers(l *Loader) (count int) {
+	l.RangeWatchers(func(uri string) bool {
+		count++
+		return true
+	})
+	return
+}
+
+func makeTestLoader() (*Loader, string) {
+	f, _ := filepath.Abs("loader.go")
+	return New(), "file:///" + f
 }
