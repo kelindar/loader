@@ -65,7 +65,7 @@ func (w *watcher) check(ctx context.Context) {
 	case isCanceled: // Manually closed
 		w.dispose()
 		return
-	case isCreated, isDisposed:
+	case isDisposed, isCreated:
 		return
 	}
 
@@ -88,7 +88,7 @@ func (w *watcher) check(ctx context.Context) {
 
 // checkLoop calls check on a timer
 func (w *watcher) checkLoop(ctx context.Context) {
-	for {
+	for atomic.LoadInt32(&w.state) == isRunning {
 		select {
 		case <-ctx.Done():
 			w.Close()

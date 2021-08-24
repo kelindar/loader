@@ -119,6 +119,18 @@ func TestCheckClosed(t *testing.T) {
 	})
 }
 
+func TestLoopClosed(t *testing.T) {
+	l, url := makeTestLoader()
+	w := newWatcher(l, url, time.Millisecond, func() {})
+	time.AfterFunc(10*time.Millisecond, func() {
+		w.Close()
+	})
+
+	// Should not time out
+	w.changeState(isCreated, isRunning)
+	w.checkLoop(context.Background())
+}
+
 func TestRangeWatchers(t *testing.T) {
 	loader, url := makeTestLoader()
 	loader.Watch(context.Background(), url, 1*time.Millisecond)
