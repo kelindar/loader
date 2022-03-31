@@ -36,7 +36,7 @@ func TestS3(t *testing.T) {
 	s3.PutObject("hello.txt", inputVal)
 
 	// Test DownloadNewer
-	val, err := cli.DownloadIf(context.Background(), "s3://bucket/h", time.Unix(0, 0))
+	val, err := cli.DownloadIf(context.Background(), "s3://bucket/hello.txt", time.Unix(0, 0))
 	assert.NoError(t, err)
 	assert.Equal(t, inputVal, val)
 }
@@ -59,6 +59,8 @@ func (s *fakeS3) serve(w http.ResponseWriter, r *http.Request) {
 	defer s.Unlock()
 
 	switch {
+	case r.Method == http.MethodHead:
+		s.HeadObject(w, r)
 	case r.Method == http.MethodGet && strings.Contains(r.URL.String(), "list-type=2&prefix"):
 		s.ListObjects(w, r)
 	case r.Method == http.MethodGet:
@@ -108,6 +110,18 @@ func (s *fakeS3) PutObject(key string, value []byte) {
 		ModifiedAt: time.Now().UnixNano(),
 		Value:      value,
 	}
+}
+
+// HeadObject emulates s3 head object
+func (s *fakeS3) HeadObject(w http.ResponseWriter, r *http.Request) {
+	key := keyOf(r)
+	if _, ok := s.Objects[key]; ok {
+		w.Header().Set("Last-Modified", time.Now().UTC().Format(time.RFC850))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	w.WriteHeader(http.StatusNotFound)
 }
 
 // GetObject emulates s3 get object
