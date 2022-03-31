@@ -84,50 +84,27 @@ func NewFromSession(sess *session.Session) *Client {
 // DownloadIf downloads a file only if the updatedSince time is older than the resource
 // timestamp itself.
 func (s *Client) DownloadIf(ctx context.Context, uri string, updatedSince time.Time) ([]byte, error) {
-	bucket, prefix, err := parseURI(uri)
+	bucket, key, err := parseURI(uri)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the latest key
-	key, updatedAt, err := s.getLatestKey(ctx, bucket, prefix)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the latest key is older than the time, skip
-	if !isModified(updatedAt, updatedSince) {
+	// Use the head operation to retrieve the last modified date
+	head, err := s.client.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	switch {
+	case err != nil:
+		return nil, convertError(err)
+	case head.LastModified == nil:
+		return nil, nil
+	case !isModified(*head.LastModified, updatedSince):
 		return nil, nil
 	}
 
 	// Download and return the updatedAt time
 	return s.Download(ctx, bucket, key)
-}
-
-// getLatestKey returns latest uploaded key in given bucket
-func (s *Client) getLatestKey(ctx context.Context, bucket, prefix string) (string, time.Time, error) {
-	list, err := s.client.ListObjectsV2WithContext(ctx, &s3.ListObjectsV2Input{
-		Bucket: aws.String(bucket),
-		Prefix: aws.String(prefix),
-	})
-	if err != nil {
-		return "", time.Time{}, convertError(err)
-	}
-
-	// search for the latest object within the prefix
-	var updatedKey string
-	var updatedAt time.Time
-	for _, object := range list.Contents {
-		if aws.Int64Value(object.Size) > 0 && isModified(aws.TimeValue(object.LastModified), updatedAt) {
-			updatedKey = aws.StringValue(object.Key)
-			updatedAt = aws.TimeValue(object.LastModified)
-		}
-	}
-
-	if updatedKey == "" {
-		return "", time.Time{}, ErrNoSuchKey
-	}
-	return updatedKey, updatedAt, nil
 }
 
 // Download loads a specified object from the bucket
@@ -151,7 +128,6 @@ func convertError(err error) error {
 		switch awsErr.Code() {
 		case s3.ErrCodeNoSuchBucket:
 			return ErrNoSuchBucket
-
 		case s3.ErrCodeNoSuchKey:
 			return ErrNoSuchKey
 		}
