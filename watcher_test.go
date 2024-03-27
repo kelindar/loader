@@ -82,21 +82,26 @@ func testCancelByFunc(t *testing.T, fn func(wg *sync.WaitGroup, loader *Loader, 
 	assert.Equal(t, 0, countWatchers(loader))
 }
 
-func TestWatch_Many(t *testing.T) {
+func TestWatchMany(t *testing.T) {
 	loader, url := makeTestLoader()
 	time.AfterFunc(100*time.Millisecond, func() {
 		loader.Unwatch(url)
 	})
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
+	defer cancel()
+
 	var count int
 	for i := 0; i < 10; i++ {
-		loader.Watch(context.Background(), url, 1*time.Millisecond)
+		loader.Watch(ctx, url, 1*time.Millisecond)
+		cancel()
 	}
 
-	updates := loader.Watch(context.Background(), url, 1*time.Millisecond)
+	updates := loader.Watch(ctx, url, 1*time.Millisecond)
 	for range updates {
 		count++
 	}
+
 	assert.Equal(t, 1, count)
 }
 
