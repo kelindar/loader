@@ -104,6 +104,7 @@ func (w *watcher) checkLoop(ctx context.Context) {
 // Close stops the watcher
 func (w *watcher) Close() error {
 	w.changeState(isRunning, isCanceled)
+	w.dispose()
 	return nil
 }
 

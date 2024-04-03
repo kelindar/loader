@@ -82,7 +82,7 @@ func testCancelByFunc(t *testing.T, fn func(wg *sync.WaitGroup, loader *Loader, 
 	assert.Equal(t, 0, countWatchers(loader))
 }
 
-func TestWatch_Many(t *testing.T) {
+func TestWatchMany(t *testing.T) {
 	loader, url := makeTestLoader()
 	time.AfterFunc(100*time.Millisecond, func() {
 		loader.Unwatch(url)
