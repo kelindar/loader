@@ -88,16 +88,12 @@ func TestWatchMany(t *testing.T) {
 		loader.Unwatch(url)
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*1)
-	defer cancel()
-
 	var count int
 	for i := 0; i < 10; i++ {
-		loader.Watch(ctx, url, 1*time.Millisecond)
-		cancel()
+		loader.Watch(context.Background(), url, 1*time.Millisecond)
 	}
 
-	updates := loader.Watch(ctx, url, 1*time.Millisecond)
+	updates := loader.Watch(context.Background(), url, 1*time.Millisecond)
 	for range updates {
 		count++
 	}
