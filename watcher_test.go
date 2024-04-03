@@ -97,7 +97,6 @@ func TestWatchMany(t *testing.T) {
 	for range updates {
 		count++
 	}
-
 	assert.Equal(t, 1, count)
 }
 

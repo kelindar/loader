@@ -5,7 +5,6 @@ package loader
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"runtime/debug"
 	"sync/atomic"
@@ -52,17 +51,12 @@ func newWatcher(loader *Loader, uri string, interval time.Duration, onStop func(
 
 // Start starts watching
 func (w *watcher) Start(ctx context.Context) {
-	fmt.Println("started")
 	if !w.changeState(isCreated, isRunning) {
-		fmt.Println("not changing state")
 		return // Prevent from starting twice
 	}
 
-	fmt.Println("cheking")
 	w.check(ctx)
-	fmt.Println("running check")
 	go w.checkLoop(ctx)
-	fmt.Println("go method done")
 }
 
 // Check performs a single check
