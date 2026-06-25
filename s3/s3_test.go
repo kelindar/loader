@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,6 +40,55 @@ func TestS3(t *testing.T) {
 	val, err := cli.DownloadIf(context.Background(), "s3://bucket/hello.txt", time.Unix(0, 0))
 	assert.NoError(t, err)
 	assert.Equal(t, inputVal, val)
+}
+
+func TestNewWithConfig(t *testing.T) {
+	conf := aws.NewConfig().WithRegion("eu-west-1").WithMaxRetries(3)
+	cli, err := NewWithConfig(conf)
+	assert.NotNil(t, cli)
+	assert.NoError(t, err)
+}
+
+func TestNewWithConfigAndOptions(t *testing.T) {
+	conf := aws.NewConfig().WithRegion("eu-west-1")
+	cli, err := NewWithConfig(conf, WithMaxIdleConnsPerHost(100))
+	assert.NotNil(t, cli)
+	assert.NoError(t, err)
+	assert.NotNil(t, conf.HTTPClient)
+}
+
+func TestWithMaxIdleConnsPerHostOption(t *testing.T) {
+	o := new(options)
+	WithMaxIdleConnsPerHost(42)(o)
+	assert.NotNil(t, o.transport)
+	assert.Equal(t, 42, o.transport.MaxIdleConnsPerHost)
+}
+
+func TestWithIdleConnTimeoutOption(t *testing.T) {
+	o := new(options)
+	WithIdleConnTimeout(5 * time.Minute)(o)
+	assert.NotNil(t, o.transport)
+	assert.Equal(t, 5*time.Minute, o.transport.IdleConnTimeout)
+}
+
+func TestApplyOptionsCombines(t *testing.T) {
+	conf := aws.NewConfig()
+	conf = applyOptions(conf,
+		WithMaxIdleConnsPerHost(50),
+		WithIdleConnTimeout(2*time.Minute),
+	)
+
+	assert.NotNil(t, conf.HTTPClient)
+	tr, ok := conf.HTTPClient.Transport.(*http.Transport)
+	assert.True(t, ok)
+	assert.Equal(t, 50, tr.MaxIdleConnsPerHost)
+	assert.Equal(t, 2*time.Minute, tr.IdleConnTimeout)
+}
+
+func TestApplyOptionsNoneKeepsDefaults(t *testing.T) {
+	conf := aws.NewConfig()
+	conf = applyOptions(conf)
+	assert.Nil(t, conf.HTTPClient)
 }
 
 // fakeS3 represents a fake s3 server
