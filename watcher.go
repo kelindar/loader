@@ -32,6 +32,7 @@ type watcher struct {
 	loader    *Loader       // The parent loader to use
 	uri       string        // The uri to watch
 	updates   chan Update   // The update channel
+	done      chan struct{} // Closed to signal cancellation to the sender
 	interval  time.Duration // Interval between subsequent check calls
 	onStop    func()        // User-defined cancellation callback
 }
@@ -44,6 +45,7 @@ func newWatcher(loader *Loader, uri string, interval time.Duration, onStop func(
 		loader:    loader,
 		uri:       uri,
 		updates:   make(chan Update, 1),
+		done:      make(chan struct{}),
 		interval:  interval,
 		onStop:    onStop,
 	}
@@ -62,10 +64,7 @@ func (w *watcher) Start(ctx context.Context) {
 // Check performs a single check
 func (w *watcher) check(ctx context.Context) {
 	switch atomic.LoadInt32(&w.state) {
-	case isCanceled: // Manually closed
-		w.dispose()
-		return
-	case isDisposed, isCreated:
+	case isCanceled, isDisposed, isCreated:
 		return
 	}
 
@@ -81,18 +80,25 @@ func (w *watcher) check(ctx context.Context) {
 		return // No updates, skip
 	}
 
-	// Update the time and push the update out
+	// Update the time and push the update out, aborting the send if the watcher
+	// is cancelled so we never block on a watcher that's being closed.
 	atomic.StoreInt64(&w.updatedAt, now.UnixNano())
-	w.updates <- Update{b, err}
+	select {
+	case w.updates <- Update{b, err}:
+	case <-w.done:
+	}
 }
 
-// checkLoop calls check on a timer
+// checkLoop calls check on a timer. It owns the updates channel and is the only
+// goroutine that ever closes it, so sends in check never race with the close.
 func (w *watcher) checkLoop(ctx context.Context) {
+	defer w.dispose()
 	for atomic.LoadInt32(&w.state) == isRunning {
 		select {
 		case <-ctx.Done():
 			w.Close()
-			w.dispose()
+			return
+		case <-w.done:
 			return
 		default:
 			w.check(ctx)
@@ -101,14 +107,17 @@ func (w *watcher) checkLoop(ctx context.Context) {
 	}
 }
 
-// Close stops the watcher
+// Close stops the watcher. It only signals cancellation; the owning checkLoop
+// goroutine observes the signal and disposes the watcher, closing the channel.
 func (w *watcher) Close() error {
-	w.changeState(isRunning, isCanceled)
-	w.dispose()
+	if w.changeState(isRunning, isCanceled) {
+		close(w.done)
+	}
 	return nil
 }
 
-// dispose closes the channel and marks the watcher as disposed
+// dispose closes the channel and marks the watcher as disposed. It must only be
+// called from the checkLoop goroutine that owns the updates channel.
 func (w *watcher) dispose() {
 	if w.changeState(isCanceled, isDisposed) {
 		close(w.updates)
